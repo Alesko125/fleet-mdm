@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Трафік лише через TLS. Для self-hosted розгортання з власним CA
+    покладіть сертифікат у res/raw/fleet_ca.crt і розкоментуйте блок нижче.
+    Довіра до всіх сертифікатів (trustAll) навмисно не використовується.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <!--
+            <certificates src="@raw/fleet_ca" />
+            -->
+        </trust-anchors>
+    </base-config>
+
+    <!-- Локальна розробка: дозволяємо http лише на емуляторі -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">localhost</domain>
+    </domain-config>
+</network-security-config>

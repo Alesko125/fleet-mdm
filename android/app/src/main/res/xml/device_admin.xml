@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Мінімальний набір політик Device Admin.
+    Розширюється у M5 (kiosk / lock task) — лише задокументовані можливості
+    DevicePolicyManager, без прихованих механізмів.
+-->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies>
+        <force-lock />
+        <wipe-data />
+        <reset-password />
+        <limit-password />
+        <watch-login />
+    </uses-policies>
+</device-admin>

@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Камера потрібна лише для сканування QR-коду enrollment-токена -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- Постійне видиме сповіщення про те, що пристрій під керуванням -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
+        Геолокація. Модуль opt-in: дозволи запитуються лише коли адміністратор
+        увімкнув геолокацію, і користувач може відмовити або відкликати їх
+        у будь-який момент — агент це поважає й повідомляє серверу.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+
+    <!--
+        Комунікаційний модуль (опційний, ВИМКНЕНИЙ за замовчуванням).
+
+        READ_SMS і READ_CALL_LOG — небезпечні рантайм-дозволи. Вони
+        оголошені тут, але агент **запитує їх лише** коли адміністратор
+        увімкнув модуль, і читає виключно системні content provider'и
+        (Telephony.Sms, CallLog.Calls) — тобто те, що вже видно штатним
+        застосункам «Повідомлення» й «Телефон».
+
+        Ми НЕ реалізуємо й не можемо реалізувати легально: перехоплення
+        повідомлень чужих застосунків, читання сповіщень задля вмісту,
+        кейлогінг, витягування OTP чи приховане стеження. Таких API Android
+        застосунку не надає, і обходити обмеження ми не намагаємось.
+
+        RECEIVE_SMS / SEND_SMS навмисно НЕ оголошені: перехоплення вхідних
+        і надсилання від імені користувача модулю не потрібні.
+    -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+
+    <!-- Керування застосунками через PackageInstaller -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <!--
+        Потрібно для інвентаризації встановлених застосунків — це основна
+        функція керування пристроєм (політика Google Play: Device Management).
+        Читаються лише метадані пакетів, не їхні дані.
+    -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <application
+        android:name=".FleetAgentApplication"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.FleetAgent">
+
+        <!--
+            Агент навмисно видимий: є іконка в лаунчері, назва застосунку
+            і екран статусу. Приховування агента не реалізується.
+        -->
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.FleetAgent">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Командний канал: постійне сповіщення показує стан керування -->
+        <service
+            android:name=".command.AgentService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync|location" />
+
+        <!--
+            Віддалена підтримка. Показ екрана можливий лише після явної згоди
+            користувача: спершу цей екран, далі системний діалог MediaProjection.
+        -->
+        <activity
+            android:name=".support.SupportConsentActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.FleetAgent" />
+
+        <service
+            android:name=".support.ScreenShareService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
+        <!--
+            Віддалене керування через штатну службу доступності: вмикається
+            виключно користувачем у системних налаштуваннях.
+        -->
+        <service
+            android:name=".support.RemoteInputService"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <receiver
+            android:name=".command.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Device Owner / Device Admin: керування лише через задокументовані API -->
+        <receiver
+            android:name=".admin.FleetDeviceAdminReceiver"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+                <action android:name="android.app.action.PROFILE_PROVISIONING_COMPLETE" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+</manifest>

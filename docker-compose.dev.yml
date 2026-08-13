@@ -1,0 +1,37 @@
+# Оточення РОЗРОБКИ: hot-reload, відкриті порти БД, без nginx.
+#
+# Файл навмисно НЕ називається docker-compose.override.yml: такий файл
+# `docker compose up` підхоплює автоматично, і на робочому сервері він тихо
+# перемкнув би APP_ENV на development (а з ним — вимкнув перевірку секретів),
+# підняв би uvicorn з --reload і виставив API повз nginx і TLS.
+#
+# Підключати лише явно:
+#     docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# або через `make up-dev`.
+
+services:
+  postgres:
+    ports:
+      # Тільки loopback: порт БД не має світити в мережу навіть локально.
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  api:
+    command:
+      ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    environment:
+      APP_ENV: development
+      LOG_FORMAT: console
+    volumes:
+      - ./backend:/app
+      - storage_data:/var/lib/fleet/storage
+    ports:
+      # Прив'язка до loopback: інакше API був би доступний ззовні по http,
+      # в обхід nginx і TLS.
+      - "127.0.0.1:8000:8000"
+
+  nginx:
+    profiles: ["tls"]

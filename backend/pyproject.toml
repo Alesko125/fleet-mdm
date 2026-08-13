@@ -1,0 +1,34 @@
+[project]
+name = "fleet-mdm-backend"
+version = "0.1.0"
+description = "Self-hosted Android device management platform — backend"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S", "ASYNC"]
+ignore = ["S101", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# S105 = "possible hardcoded password": хибно спрацьовує на іменах констант
+# (TOKEN_TYPE_*, token_type, ENROLLMENT_TOKEN_*) і на дефолтах у Settings,
+# які навмисно є заглушками й забороняються валідатором у production.
+"tests/*" = ["S105", "S106"]
+"alembic/*" = ["E501"]
+"app/core/config.py" = ["S105"]
+"app/core/security.py" = ["S105"]
+"app/services/audit.py" = ["S105"]
+"app/schemas/auth.py" = ["S105"]
+"app/schemas/enrollment.py" = ["S105"]
+# Прибирання тимчасового файла — синхронна операція на кілька мікросекунд,
+# заводити асинхронний файловий стек заради неї недоцільно.
+"app/services/storage.py" = ["ASYNC240"]

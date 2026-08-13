@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Стан реєстрації не бекапиться: ключ живе лише в Android Keystore. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="." />
+</full-backup-content>

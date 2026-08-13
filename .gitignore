@@ -1,0 +1,55 @@
+# --- secrets -------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!infra/nginx/certs/.gitkeep
+secrets/
+
+# --- python --------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+dist/
+build/
+*.egg-info/
+
+# --- node / frontend -----------------------------------------------------
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# --- android -------------------------------------------------------------
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.apk
+*.aab
+*.keystore
+!android/app/debug-placeholder.keystore
+
+# --- runtime data --------------------------------------------------------
+data/
+storage/
+*.sqlite3
+*.log
+
+# --- editors -------------------------------------------------------------
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Резервні копії — містять усі дані парку
+backups/

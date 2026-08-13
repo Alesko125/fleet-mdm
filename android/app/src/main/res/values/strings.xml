@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Fleet Агент</string>
+
+    <!-- Прозорість -->
+    <string name="transparency_title">Цим пристроєм керує адміністратор</string>
+    <string name="transparency_body">Застосунок встановлено власником пристрою для віддаленого
+        адміністрування. Він завжди видимий: має іконку в списку застосунків і показує стан
+        на цьому екрані. Нижче — повний перелік того, що збирається.</string>
+
+    <!-- Реєстрація -->
+    <string name="enroll_title">Реєстрація пристрою</string>
+    <string name="enroll_server_label">Адреса сервера</string>
+    <string name="enroll_token_label">Enrollment-токен</string>
+    <string name="enroll_token_hint">FLEET-XXXX-XXXX-XXXX-XXXX-XXXX</string>
+    <string name="enroll_scan">Сканувати QR-код</string>
+    <string name="enroll_submit">Зареєструвати</string>
+    <string name="enroll_scan_prompt">Наведіть камеру на QR-код з панелі адміністратора</string>
+    <string name="enroll_in_progress">Реєструємо пристрій…</string>
+    <string name="enroll_intro">Введіть одноразовий токен, який вам видав адміністратор, або
+        відскануйте QR-код із панелі керування.</string>
+
+    <!-- Статус -->
+    <string name="status_title">Стан керування</string>
+    <string name="status_device">Пристрій</string>
+    <string name="status_device_id">Ідентифікатор</string>
+    <string name="status_server">Сервер</string>
+    <string name="status_mode">Режим керування</string>
+    <string name="status_last_check">Останній зв\'язок</string>
+    <string name="status_check_now">Перевірити зв\'язок</string>
+    <string name="status_connected">Звʼязок із сервером є</string>
+    <string name="status_never">ще не було</string>
+
+    <string name="collected_title">Що передається на сервер</string>
+    <string name="collected_inventory">Виробник, модель, версія Android, ядро, час роботи,
+        батарея, память, сховище, тип мережі, версія агента</string>
+    <string name="collected_apps">Перелік встановлених застосунків (назва пакета й версія)</string>
+    <string name="collected_location">Геолокація — лише якщо ви окремо надасте дозвіл</string>
+    <string name="collected_support">Екран — лише під час сеансу підтримки, який ви підтверджуєте</string>
+
+    <string name="not_collected_title">Що НЕ збирається</string>
+    <string name="not_collected_body">Вміст повідомлень, дзвінки, натискання клавіш, паролі,
+        приховане аудіо чи відео. Агент не можна зробити невидимим.</string>
+
+    <!-- Фоновий сервіс -->
+    <string name="service_channel_name">Стан керування пристроєм</string>
+    <string name="service_channel_description">Постійне сповіщення про те, що пристроєм керує
+        адміністратор. Його не можна приховати — це вимога прозорості.</string>
+    <string name="service_notification_title">Пристрій під керуванням</string>
+    <string name="service_idle">Звʼязок із сервером активний</string>
+    <string name="service_idle_with_location">Звʼязок активний · геолокація увімкнена</string>
+    <string name="service_working">Виконується операція з застосунками</string>
+
+    <!-- Керування застосунками -->
+    <string name="apps_title">Керування застосунками</string>
+    <string name="apps_service_toggle">Фоновий агент (видиме сповіщення)</string>
+    <string name="apps_send_inventory">Надіслати перелік застосунків</string>
+    <string name="apps_check_commands">Перевірити завдання зараз</string>
+    <string name="apps_root_toggle">Дозволити запасне встановлення через su (root)</string>
+    <string name="apps_root_hint">Використовується лише якщо штатний PackageInstaller не
+        впорався, і завжди позначається в журналі операцій на сервері.</string>
+    <string name="apps_install_note">Встановлення й видалення виконує системний
+        PackageInstaller. Без режиму Device Owner Android щоразу питає вашого підтвердження —
+        агент цей діалог не обходить.</string>
+
+    <!-- Геолокація -->
+    <string name="location_title">Геолокація</string>
+    <string name="location_disabled_note">Модуль вимкнено адміністратором — координати не
+        збираються й не передаються.</string>
+    <string name="location_enabled_note">Адміністратор увімкнув геолокацію. Координати
+        збираються за розкладом нижче й лише поки ви надаєте дозвіл Android.</string>
+    <string name="location_permission">Дозвіл</string>
+    <string name="location_background">Фоновий дозвіл</string>
+    <string name="location_services">Служби геолокації</string>
+    <string name="location_interval">Інтервал</string>
+    <string name="location_accuracy">Точність</string>
+    <string name="location_queue">У черзі на відправку</string>
+    <string name="location_last_fix">Останній вимір</string>
+    <string name="location_battery">Режим батареї</string>
+    <string name="location_grant">Надати дозвіл</string>
+    <string name="location_grant_background">Дозволити у фоні</string>
+    <string name="location_open_settings">Відкрити налаштування</string>
+    <string name="location_accuracy_high">висока (GPS)</string>
+    <string name="location_accuracy_low">економна (мережа)</string>
+    <string name="location_revoke_hint">Відкликати дозвіл можна будь-коли в системних
+        налаштуваннях — агент одразу припинить збір і повідомить про це сервер.</string>
+
+    <!-- Віддалена підтримка -->
+    <string name="support_consent_title">Запит на показ екрана</string>
+    <string name="support_consent_admin">Адміністратор: %1$s</string>
+    <string name="support_consent_reason">Причина: %1$s</string>
+    <string name="support_consent_input">Додатково запитано віддалене керування. Воно
+        працюватиме лише якщо ви окремо ввімкнете службу доступності Fleet Агента.</string>
+    <string name="support_consent_note">Якщо ви погодитесь, Android покаже власний діалог
+        підтвердження та індикатор трансляції. Зупинити показ можна будь-коли кнопкою в
+        сповіщенні.</string>
+    <string name="support_allow">Дозволити показ</string>
+    <string name="support_deny">Відхилити</string>
+    <string name="support_stop">Зупинити</string>
+
+    <string name="support_channel_name">Сеанс віддаленої підтримки</string>
+    <string name="support_channel_description">Показує, що зараз триває трансляція екрана.
+        Це сповіщення неможливо приховати.</string>
+    <string name="support_notification_title">Триває показ екрана</string>
+    <string name="support_notification_text">Екран бачить %1$s. Натисніть «Зупинити», щоб
+        завершити.</string>
+    <string name="support_input_description">Дозволяє оператору підтримки виконувати натискання
+        та жести під час сеансу, який ви підтвердили. Вміст екрана службою не читається.</string>
+
+    <string name="support_status_title">Віддалена підтримка</string>
+    <string name="support_status_idle">Активного сеансу немає. Показ екрана можливий лише
+        після вашого підтвердження.</string>
+    <string name="support_status_active">Триває сеанс: екран бачить %1$s</string>
+    <string name="support_status_input">Віддалене керування: %1$s</string>
+
+    <string name="error_generic">Сталася помилка</string>
+    <string name="error_server_url">Некоректна адреса сервера</string>
+    <string name="error_token">Некоректний формат токена</string>
+    <string name="retry">Спробувати ще раз</string>
+
+    <!-- Картка стану віддаленої підтримки на головному екрані агента -->
+    <string name="support_card_title">Віддалена підтримка</string>
+    <string name="support_card_idle">Зараз ніхто не переглядає екран цього пристрою.</string>
+    <string name="support_card_state">Стан</string>
+    <string name="support_card_state_streaming">екран транслюється</string>
+    <string name="support_card_state_connected">канал підключено, кадрів ще немає</string>
+    <string name="support_card_state_connecting">відновлюємо зʼєднання…</string>
+    <string name="support_card_admin">Адміністратор</string>
+    <string name="support_card_reason">Причина</string>
+    <string name="support_card_duration">Триває</string>
+    <string name="support_card_reconnects">Перепідключень</string>
+    <string name="support_card_input">Керування</string>
+    <string name="support_card_input_no">не запитувалося — лише перегляд</string>
+    <string name="support_card_input_yes">дозволено вами у налаштуваннях доступності</string>
+    <string name="support_card_input_unavailable">запитано, але службу доступності вимкнено</string>
+    <string name="support_card_hint">Ви можете зупинити показ екрана будь-якої миті — тут, у сповіщенні або системним індикатором Android.</string>
+
+    <!-- Комунікаційний модуль (опційний, вимкнений за замовчуванням) -->
+    <string name="comms_card_title">Повідомлення та дзвінки</string>
+    <string name="comms_card_default_notice">Адміністратор увімкнув збір повідомлень та/або журналу дзвінків на цьому пристрої.</string>
+    <string name="comms_card_sms">SMS</string>
+    <string name="comms_card_calls">Журнал дзвінків</string>
+    <string name="comms_card_metadata_only">Збираються лише метадані (номер, час), без тексту повідомлень.</string>
+    <string name="comms_card_permission_needed">Для збору потрібен ваш дозвіл на читання. Ви можете його не надавати.</string>
+    <string name="comms_card_grant">Надати дозвіл</string>
+</resources>

@@ -1,0 +1,137 @@
+name: fleet-mdm
+
+# Базова (production) конфігурація. Оточення розробки підключається ЯВНО:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+x-hardening: &hardening
+  # Процес у контейнері не має здобувати нові привілеї — навіть якщо
+  # всередині виявиться suid-бінарник.
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    <<: *hardening
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fleet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD обовʼязковий}
+      POSTGRES_DB: ${POSTGRES_DB:-fleet}
+      # Пароль ролі застосунку (обмежені права) — використовується у init-скрипті.
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD обовʼязковий}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-fleet_app}
+      # Явне іменування, щоб не залежати від локалі хоста
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+      # scram-sha-256 замість md5 для будь-яких зовнішніх підключень.
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_WALDIR: ""
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Створює роль застосунку з мінімально потрібними правами.
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fleet} -d ${POSTGRES_DB:-fleet}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [fleet]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    <<: *hardening
+    # Пароль обовʼязковий: у Redis лежать nonce автентифікації пристроїв і
+    # канали доставки команд — публікація в них рівносильна виконанню
+    # довільної команди на пристрої. Небезпечні для нас команди вимкнені.
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory-policy
+      - noeviction
+      - --requirepass
+      - ${REDIS_PASSWORD:?REDIS_PASSWORD обовʼязковий}
+      - --rename-command
+      - "CONFIG "
+      - --rename-command
+      - "FLUSHALL "
+      - --rename-command
+      - "FLUSHDB "
+      - --rename-command
+      - "DEBUG "
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD обовʼязковий}
+    networks: [fleet]
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    <<: *hardening
+    env_file: [.env]
+    environment:
+      POSTGRES_HOST: postgres
+      # Застосунок ходить у БД роллю з обмеженими правами, не власником схеми.
+      POSTGRES_USER: ${POSTGRES_APP_USER:-fleet_app}
+      POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD обовʼязковий}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD обовʼязковий}@redis:6379/0
+      STORAGE_ROOT: /var/lib/fleet/storage
+      # Міграції виконує окрема роль-власник схеми.
+      MIGRATION_DATABASE_URL: >-
+        postgresql+asyncpg://${POSTGRES_USER:-fleet}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fleet}
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    volumes:
+      - storage_data:/var/lib/fleet/storage
+    # Корінь контейнера — лише для читання; запис дозволено там, де потрібен.
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    networks: [fleet]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    <<: *hardening
+    networks: [fleet]
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    <<: *hardening
+    depends_on: [api, frontend]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/certs:/etc/nginx/certs:ro
+      - certbot_www:/var/www/certbot
+    networks: [fleet]
+
+volumes:
+  postgres_data:
+  redis_data:
+  storage_data:
+  certbot_www:
+
+networks:
+  fleet:
+    driver: bridge
+    # Внутрішній трафік між контейнерами не має бути доступним ззовні:
+    # назовні дивиться лише nginx через опубліковані порти.
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "true"
