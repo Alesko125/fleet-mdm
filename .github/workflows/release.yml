@@ -1,0 +1,95 @@
+name: Release
+
+# Реліз збирається з тега вигляду v1.2.3.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Тег для збірки (напр. v1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Збірка артефактів і публікація
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- перевірки перед публікацією ---------------------------------
+      # Реліз не має виходити зі зламаного коду, тож повторюємо ключові
+      # перевірки тут, а не покладаємось на те, що CI колись був зелений.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Тести бекенду
+        working-directory: backend
+        run: |
+          pip install -r requirements-dev.txt
+          python -m ruff check .
+          python -m pytest -q
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Збірка панелі
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Збірка агента
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      # --- пакування ----------------------------------------------------
+      - name: Пакуємо артефакти
+        run: |
+          VERSION="${GITHUB_REF_NAME:-${{ github.event.inputs.tag }}}"
+          mkdir -p dist
+
+          # APK підписаний DEBUG-ключем: він для ознайомлення й тестів.
+          # Для парку збирайте assembleRelease власним ключем — див. README.
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             "dist/fleet-agent-${VERSION}-debug.apk"
+
+          tar czf "dist/fleet-panel-${VERSION}.tar.gz" -C frontend dist
+
+          # Усе, що потрібно для розгортання без клонування репозиторію.
+          tar czf "dist/fleet-deploy-${VERSION}.tar.gz" \
+            docker-compose.yml .env.example Makefile infra docs
+
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+          ls -la dist
+
+      - name: Публікація релізу
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name || github.event.inputs.tag }}
+          generate_release_notes: true
+          files: |
+            dist/*.apk
+            dist/*.tar.gz
+            dist/SHA256SUMS.txt
+          body: |
+            Артефакти зібрано з тега автоматично.
+
+            > **APK підписаний debug-ключем** — для ознайомлення й тестів.
+            > Для реального парку зберіть `assembleRelease` власним ключем
+            > і закріпіть його сертифікат у `APK_ALLOWED_SIGNERS`.
+
+            Розгортання: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+            Контрольні суми — у `SHA256SUMS.txt`.

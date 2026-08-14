@@ -12,11 +12,11 @@ android {
         applicationId = "ua.fleet.agent"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 10000
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "AGENT_VERSION", "\"0.1.0\"")
+        buildConfigField("String", "AGENT_VERSION", "\"1.0.0\"")
     }
 
     buildTypes {

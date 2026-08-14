@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Скасовуємо попередній прогін тієї самої гілки — немає сенсу тримати чергу.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Бекенд (тести + лінт)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Залежності
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Лінт
+        working-directory: backend
+        run: python -m ruff check .
+
+      - name: Тести
+        working-directory: backend
+        run: python -m pytest -q
+
+      - name: Міграції піднімаються й відкочуються
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./ci-check.db
+        run: |
+          python -m alembic upgrade head
+          python -m alembic downgrade base
+
+  frontend:
+    name: Панель (типи + збірка)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Залежності
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Перевірка типів
+        working-directory: frontend
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Збірка
+        working-directory: frontend
+        run: npm run build
+
+  android:
+    name: Агент (збірка + тести)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Тести
+        working-directory: android
+        run: ./gradlew testDebugUnitTest --no-daemon
+
+      - name: Збірка APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
