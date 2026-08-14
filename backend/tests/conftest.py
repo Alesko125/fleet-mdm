@@ -15,6 +15,8 @@ from dataclasses import dataclass
 # Оточення має бути виставлене ДО імпорту застосунку (Settings кешується).
 os.environ.update(
     {
+        # Локальний backend/.env розробника не має впливати на тести.
+        "FLEET_DISABLE_DOTENV": "1",
         "APP_ENV": "test",
         "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
         "REDIS_URL": "redis://localhost:6379/15",

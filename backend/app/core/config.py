@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Literal
@@ -22,9 +23,23 @@ INSECURE_DEFAULTS = {
 Environment = Literal["development", "staging", "production", "test"]
 
 
+def _env_files() -> tuple[str, ...] | None:
+    """Які .env-файли читати.
+
+    Тести мають бачити рівно те оточення, яке самі задали: локальний
+    `backend/.env` розробника (наприклад, згенерований `start-backend.bat`)
+    не повинен мовчки змінювати їхню поведінку. Одного разу через це
+    `RATE_LIMIT_ENABLED=false` з дев-конфігу вимкнув перевірки лімітів у
+    тестах — і вони «зеленіли» на непрацюючому контролі.
+    """
+    if os.getenv("FLEET_DISABLE_DOTENV") == "1":
+        return None
+    return (".env", "../.env")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(".env", "../.env"),
+        env_file=_env_files(),
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,

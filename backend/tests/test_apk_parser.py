@@ -1,4 +1,5 @@
 import hashlib
+import re
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,19 @@ from app.services.apk_parser import ApkParseError, parse_apk
 from tests.axml import build_apk
 
 REAL_APK = Path(__file__).resolve().parents[2] / "android/app/build/outputs/apk/debug/app-debug.apk"
+GRADLE_BUILD = Path(__file__).resolve().parents[2] / "android/app/build.gradle.kts"
+
+
+def _expected_version() -> tuple[int, str]:
+    """Очікувані версії беремо з build.gradle.kts, а не зашиваємо в тест.
+
+    Інакше кожне підняття версії агента «ламало» б перевірку парсера,
+    хоча парсер працює правильно.
+    """
+    source = GRADLE_BUILD.read_text(encoding="utf-8")
+    code = int(re.search(r"versionCode\s*=\s*(\d+)", source).group(1))
+    name = re.search(r'versionName\s*=\s*"([^"]+)"', source).group(1)
+    return code, name
 
 
 def test_extracts_core_metadata(tmp_path):
@@ -98,10 +112,11 @@ def test_rejects_missing_file(tmp_path):
 @pytest.mark.skipif(not REAL_APK.exists(), reason="APK агента ще не зібрано")
 def test_parses_real_apk_if_available():
     """Контроль на справжньому APK, зібраному Gradle."""
+    expected_code, expected_name = _expected_version()
     meta = parse_apk(REAL_APK)
     assert meta.package_name == "ua.fleet.agent"
-    assert meta.version_code == 1
-    assert meta.version_name == "0.1.0"
+    assert meta.version_code == expected_code
+    assert meta.version_name == expected_name
     assert meta.min_sdk == 26
     assert "android.permission.INTERNET" in meta.permissions
     assert meta.abis  # агент містить нативні бібліотеки Compose
