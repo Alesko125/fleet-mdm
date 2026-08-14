@@ -43,6 +43,8 @@ android/.idea/
 data/
 storage/
 *.sqlite3
+*.db
+*.db-journal
 *.log
 
 # --- editors -------------------------------------------------------------
