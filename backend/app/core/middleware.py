@@ -51,6 +51,23 @@ ALLOWED_CONTENT_TYPES = (
 # Шляхи, де тіло — це потік файлу, тож ліміт JSON до них не застосовується.
 STREAMING_PATH_MARKERS = ("/files/", "/apks", "/chunk")
 
+# Сторінки інтерактивної документації. Swagger UI вантажить свої JS/CSS із
+# cdn.jsdelivr.net, і суворий `script-src 'self'` перетворював /docs на
+# порожню сторінку. Послаблення точкове й безпечне: у production /docs
+# вимкнено взагалі (`docs_url=None`), тож цей CSP там просто не існує.
+DOCS_PATHS = ("/docs", "/redoc")
+DOCS_CSP = (
+    "default-src 'self'; "
+    "base-uri 'none'; "
+    "object-src 'none'; "
+    "frame-ancestors 'none'; "
+    "script-src 'self' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "img-src 'self' data: https://fastapi.tiangolo.com; "
+    "font-src 'self' data: https://cdn.jsdelivr.net; "
+    "connect-src 'self'"
+)
+
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Request-ID, тайминг і повний набір заголовків безпеки."""
@@ -71,9 +88,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         for header, value in SECURITY_HEADERS.items():
             response.headers.setdefault(header, value)
-        response.headers.setdefault(
-            "Content-Security-Policy", settings.content_security_policy
-        )
+        if request.url.path in DOCS_PATHS:
+            response.headers.setdefault("Content-Security-Policy", DOCS_CSP)
+        else:
+            response.headers.setdefault(
+                "Content-Security-Policy", settings.content_security_policy
+            )
         for header, value in NO_STORE_HEADERS.items():
             response.headers.setdefault(header, value)
         if settings.use_secure_cookies:

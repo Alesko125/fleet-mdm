@@ -40,14 +40,14 @@ if errorlevel 1 goto fail
 
 rem ------------------------------------------------------------------ venv --
 if not exist "%PY%" (
-    echo [1/6] Створюємо віртуальне середовище...
+    echo [1/7] Створюємо віртуальне середовище...
     %BOOTPY% -m venv "%VENV%"
     if errorlevel 1 (
         echo [ПОМИЛКА] Не вдалося створити venv у "%VENV%".
         goto fail
     )
 ) else (
-    echo [1/6] Віртуальне середовище на місці.
+    echo [1/7] Віртуальне середовище на місці.
 )
 
 rem -------------------------------------------------------------- залежності --
@@ -62,7 +62,7 @@ if not defined NEED_DEPS (
 )
 
 if defined NEED_DEPS (
-    echo [2/6] Встановлюємо залежності ^(це може зайняти хвилину^)...
+    echo [2/7] Встановлюємо залежності ^(це може зайняти хвилину^)...
     "%PY%" -m pip install --upgrade pip --quiet
     "%PY%" -m pip install -r "%BACKEND%\requirements-dev.txt" --quiet
     if errorlevel 1 (
@@ -71,7 +71,7 @@ if defined NEED_DEPS (
     )
     echo installed> "%STAMP%"
 ) else (
-    echo [2/6] Залежності актуальні.
+    echo [2/7] Залежності актуальні.
 )
 
 rem --------------------------------------------------------- служби у Docker --
@@ -82,11 +82,11 @@ docker info >nul 2>&1
 if not errorlevel 1 set "HAVE_DOCKER=1"
 
 if defined HAVE_DOCKER (
-    echo [3/6] Docker знайдено - піднімаємо PostgreSQL і Redis...
+    echo [3/7] Docker знайдено - піднімаємо PostgreSQL і Redis...
     call :start_services
     if errorlevel 1 goto fail
 ) else (
-    echo [3/6] Docker недоступний - режим SQLite.
+    echo [3/7] Docker недоступний - режим SQLite.
     echo.
     echo        УВАГА: без Redis не працюватимуть вхід у панель,
     echo        автентифікація агентів і черга команд. Обмеження частоти
@@ -97,15 +97,42 @@ if defined HAVE_DOCKER (
 
 rem ------------------------------------------------------------ конфігурація --
 if not exist "%ENVFILE%" (
-    echo [4/6] Створюємо "%ENVFILE%" зі згенерованими секретами...
+    echo [4/7] Створюємо "%ENVFILE%" зі згенерованими секретами...
     call :write_env
     if errorlevel 1 goto fail
 ) else (
-    echo [4/6] Конфігурація вже існує - лишаємо без змін.
+    echo [4/7] Конфігурація вже існує - лишаємо без змін.
+)
+
+rem ----------------------------------------------------------------- панель --
+rem Без зібраної панелі "/" показував би лише довідку. Збираємо один раз,
+rem далі пропускаємо - перезбірка потрібна лише коли змінили фронтенд.
+if not exist "%ROOT%frontend\dist\index.html" (
+    where npm >nul 2>&1
+    if errorlevel 1 (
+        echo [5/7] Node.js не знайдено - панель не збирається.
+        echo        Бекенд працюватиме, "/" покаже довідку з посиланнями.
+    ) else (
+        echo [5/7] Збираємо панель ^(один раз, ~1 хвилина^)...
+        pushd "%ROOT%frontend"
+        if not exist node_modules (
+            call npm ci --no-audit --no-fund >nul 2>&1
+            if errorlevel 1 call npm install --no-audit --no-fund >nul 2>&1
+        )
+        call npm run build >nul 2>&1
+        if errorlevel 1 (
+            echo        [УВАГА] Панель не зібралася. Бекенд усе одно запуститься.
+        ) else (
+            echo        Панель зібрано.
+        )
+        popd
+    )
+) else (
+    echo [5/7] Панель уже зібрана.
 )
 
 rem --------------------------------------------------------------- міграції --
-echo [5/6] Застосовуємо міграції...
+echo [6/7] Застосовуємо міграції...
 pushd "%BACKEND%"
 "%PY%" -m alembic upgrade head
 set "MIGRC=%ERRORLEVEL%"
@@ -117,12 +144,12 @@ if not "%MIGRC%"=="0" (
 
 if /i "%MODE%"=="setup" (
     echo.
-    echo [6/6] Налаштування завершено. Запуск: start-backend.bat
+    echo [7/7] Налаштування завершено. Запуск: start-backend.bat
     goto done
 )
 
 if /i "%MODE%"=="test" (
-    echo [6/6] Запускаємо тести...
+    echo [7/7] Запускаємо тести...
     pushd "%BACKEND%"
     "%PY%" -m pytest -q
     set "RC=!ERRORLEVEL!"
@@ -131,14 +158,18 @@ if /i "%MODE%"=="test" (
 )
 
 rem ----------------------------------------------------------------- запуск --
-echo [6/6] Запускаємо сервер...
+echo [7/7] Запускаємо сервер...
 echo.
-echo    Панель API : http://127.0.0.1:8000/docs
+echo    ПАНЕЛЬ     : http://127.0.0.1:8000
+echo    Документація API : http://127.0.0.1:8000/docs
 echo    Стан       : http://127.0.0.1:8000/health
 call :show_admin
 echo.
 echo    Зупинити: Ctrl+C
 echo.
+
+rem Відкриваємо браузер трохи згодом, коли сервер уже слухає порт.
+start "" /b cmd /c "timeout /t 4 /nobreak >nul & start http://127.0.0.1:8000"
 
 pushd "%BACKEND%"
 "%PY%" -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload

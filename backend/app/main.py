@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app import __version__
+from app.api.spa import mount_frontend
 from app.api.v1 import api_router
 from app.api.v1.health import router as health_router
 from app.core.config import get_settings
@@ -124,6 +125,9 @@ def create_app() -> FastAPI:
     app.include_router(api_router, prefix=settings.api_prefix)
     app.include_router(ws_router)
     app.include_router(support_ws_router)
+
+    # Панель монтується ОСТАННЬОЮ: її catch-all не має перекривати API.
+    mount_frontend(app)
 
     return app
 
