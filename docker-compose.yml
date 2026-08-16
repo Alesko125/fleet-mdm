@@ -52,14 +52,21 @@ services:
       - noeviction
       - --requirepass
       - ${REDIS_PASSWORD:?REDIS_PASSWORD обовʼязковий}
+      # rename-command приймає ДВА аргументи: команду й нове ім'я.
+      # Порожнє ім'я вимикає команду. Один склеєний токен ("CONFIG ")
+      # Redis не розбирає — сервер падав із FATAL CONFIG FILE ERROR.
       - --rename-command
-      - "CONFIG "
+      - CONFIG
+      - ""
       - --rename-command
-      - "FLUSHALL "
+      - FLUSHALL
+      - ""
       - --rename-command
-      - "FLUSHDB "
+      - FLUSHDB
+      - ""
       - --rename-command
-      - "DEBUG "
+      - DEBUG
+      - ""
     volumes:
       - redis_data:/data
     healthcheck:
@@ -77,7 +84,12 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     <<: *hardening
-    env_file: [.env]
+    # Не обов'язковий: локальний запуск (start-backend.bat) конфігурує API
+    # через backend/.env, і compose не має падати на розборі через
+    # відсутній кореневий .env.
+    env_file:
+      - path: .env
+        required: false
     environment:
       POSTGRES_HOST: postgres
       # Застосунок ходить у БД роллю з обмеженими правами, не власником схеми.

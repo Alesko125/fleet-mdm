@@ -69,7 +69,9 @@ if defined NEED_DEPS (
         echo [ПОМИЛКА] Не вдалося встановити залежності.
         goto fail
     )
-    echo installed> "%STAMP%"
+    pushd "%BACKEND%"
+    "%PY%" -c "import hashlib,pathlib;h=hashlib.sha256();[h.update(pathlib.Path(p).read_bytes()) for p in ['requirements.txt','requirements-dev.txt']];print(h.hexdigest())" > "%STAMP%"
+    popd
 ) else (
     echo [2/7] Залежності актуальні.
 )
@@ -77,9 +79,28 @@ if defined NEED_DEPS (
 rem --------------------------------------------------------- служби у Docker --
 rem Без Redis не працюють вхід ^(fail-closed rate limit^), автентифікація
 rem агентів і черга команд. Тому спершу пробуємо підняти Postgres і Redis.
+rem
+rem Паролі задаємо ДО будь-якого виклику compose: у docker-compose.yml вони
+rem оголошені як обов'язкові ^(${VAR:?...}^), і без них падає навіть розбір
+rem файлу - ще до того, як щось спробує запуститись.
+set "POSTGRES_PASSWORD=fleet-local-dev"
+set "POSTGRES_APP_PASSWORD=fleet-local-dev"
+set "REDIS_PASSWORD=fleet-local-dev"
+
 set "HAVE_DOCKER="
 docker info >nul 2>&1
 if not errorlevel 1 set "HAVE_DOCKER=1"
+
+rem DSN обчислюємо тут: вони потрібні і для очікування БД, і для .env.
+if defined HAVE_DOCKER (
+    set "DB_URL=postgresql+asyncpg://fleet:fleet-local-dev@127.0.0.1:5432/fleet"
+    set "RD_URL=redis://:fleet-local-dev@127.0.0.1:6379/0"
+    set "RL=true"
+) else (
+    set "DB_URL=sqlite+aiosqlite:///./fleet-local.db"
+    set "RD_URL=redis://127.0.0.1:6379/0"
+    set "RL=false"
+)
 
 if defined HAVE_DOCKER (
     echo [3/7] Docker знайдено - піднімаємо PostgreSQL і Redis...
@@ -205,33 +226,33 @@ exit /b 1
 :start_services
 rem Піднімаємо лише сховища; сам API запускаємо з venv, щоб працював reload.
 pushd "%ROOT%"
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis >nul 2>&1
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis
 if errorlevel 1 (
-    rem Compose вимагає секрети в оточенні - підставляємо локальні значення.
-    set "POSTGRES_PASSWORD=fleet-local-dev"
-    set "POSTGRES_APP_PASSWORD=fleet-local-dev"
-    set "REDIS_PASSWORD=fleet-local-dev"
-    docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis
-    if errorlevel 1 (
-        echo [ПОМИЛКА] Не вдалося підняти контейнери.
-        popd
-        exit /b 1
-    )
-)
-popd
-echo        Чекаємо на готовність PostgreSQL...
-set /a WAITED=0
-:wait_pg
-docker compose -f "%ROOT%docker-compose.yml" exec -T postgres pg_isready -U fleet >nul 2>&1
-if not errorlevel 1 goto pg_ready
-set /a WAITED+=2
-if %WAITED% GEQ 60 (
-    echo [ПОМИЛКА] PostgreSQL не піднявся за 60 секунд.
+    echo.
+    echo [ПОМИЛКА] Не вдалося підняти контейнери. Повідомлення - вище.
+    popd
     exit /b 1
 )
-timeout /t 2 /nobreak >nul
-goto wait_pg
-:pg_ready
+popd
+
+echo        Чекаємо на готовність PostgreSQL...
+rem Перевіряємо справжнім підключенням тими самими обліковими даними, якими
+rem працюватиме застосунок. `docker compose exec pg_isready` для цього не
+rem годиться: він залежить від розбору всього compose-файлу й мовчки падає
+rem з причин, не пов'язаних зі станом бази.
+pushd "%BACKEND%"
+"%PY%" scripts\wait_for_db.py --url "!DB_URL!" --timeout 90
+set "DBRC=!ERRORLEVEL!"
+popd
+if not "!DBRC!"=="0" (
+    echo.
+    echo        Стан контейнерів:
+    docker ps -a --filter "name=fleet-mdm" --format "          {{.Names}}  {{.Status}}"
+    echo.
+    echo        Логи Redis ^(останні рядки^):
+    docker logs --tail 5 fleet-mdm-redis-1 2>^&1
+    exit /b 1
+)
 echo        Служби готові.
 exit /b 0
 
@@ -244,16 +265,6 @@ call :read_line "%TEMP%\fleet_secrets.txt" 2 HASH_S
 call :read_line "%TEMP%\fleet_secrets.txt" 3 ADMIN_P
 call :read_line "%TEMP%\fleet_secrets.txt" 4 COMMS_S
 del "%TEMP%\fleet_secrets.txt" >nul 2>&1
-
-if defined HAVE_DOCKER (
-    set "DB_URL=postgresql+asyncpg://fleet:fleet-local-dev@127.0.0.1:5432/fleet"
-    set "RD_URL=redis://:fleet-local-dev@127.0.0.1:6379/0"
-    set "RL=true"
-) else (
-    set "DB_URL=sqlite+aiosqlite:///./fleet-local.db"
-    set "RD_URL=redis://127.0.0.1:6379/0"
-    set "RL=false"
-)
 
 >  "%ENVFILE%" echo # Локальна конфігурація розробки. Створена start-backend.bat.
 >> "%ENVFILE%" echo # НЕ для production: там свої секрети і APP_ENV=production.
@@ -323,7 +334,9 @@ goto done
 
 :fail
 echo.
-echo Запуск перервано.
+echo Запуск перервано. Прочитайте повідомлення вище.
+echo.
+pause
 endlocal
 exit /b 1
 

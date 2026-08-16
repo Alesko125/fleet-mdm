@@ -45,9 +45,26 @@ def _recreate_command_type_check(values: tuple[str, ...]) -> None:
     if bind.dialect.name != "postgresql":
         return
 
+    # SQLAlchemy від 1.4 НЕ створює CHECK для Enum(native_enum=False):
+    # `create_constraint` за замовчуванням False, і перелік перевіряється
+    # на боці Python. Тому обмеження може взагалі не існувати — і саме на
+    # цьому міграція падала на PostgreSQL, тоді як на SQLite (де гілка
+    # пропускається) усе проходило. Перестворюємо лише те, що є.
+    exists = bind.execute(
+        sa.text(
+            "SELECT 1 FROM pg_constraint "
+            "WHERE conname = :name AND conrelid = 'commands'::regclass"
+        ),
+        {"name": CHECK_NAME},
+    ).scalar()
+    if not exists:
+        return
+
     quoted = ", ".join(f"'{value}'" for value in values)
-    op.drop_constraint(CHECK_NAME, "commands", type_="check")
-    op.create_check_constraint(CHECK_NAME, "commands", f"type IN ({quoted})")
+    op.execute(f"ALTER TABLE commands DROP CONSTRAINT {CHECK_NAME}")
+    op.execute(
+        f"ALTER TABLE commands ADD CONSTRAINT {CHECK_NAME} CHECK (type IN ({quoted}))"
+    )
 
 
 def upgrade() -> None:

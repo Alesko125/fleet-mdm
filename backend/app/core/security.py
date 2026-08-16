@@ -277,8 +277,18 @@ def token_predates(claims: dict[str, Any], moment: datetime | None) -> bool:
     """
     if moment is None:
         return False
+
     if "iat_ms" in claims:
-        return token_issued_at(claims) < moment
+        # `iat_ms` обрізається до мілісекунди, а мітка в БД має мікросекундну
+        # точність. Без вирівнювання токен, виданий у ТУ САМУ мілісекунду, що
+        # й точка відсічення, округлявся вниз і виглядав старішим за неї —
+        # пристрій отримував 401 одразу після ротації ключа, коли агент
+        # автентифікується наново. Тому опускаємо мітку до тієї ж
+        # мілісекундної сітки: вікно неоднозначності — 1 мс.
+        cutoff = moment.replace(microsecond=(moment.microsecond // 1000) * 1000)
+        return token_issued_at(claims) < cutoff
+
+    # Токени старого зразка несуть лише посекундний `iat`.
     return token_issued_at(claims) < moment.replace(microsecond=0)
 
 

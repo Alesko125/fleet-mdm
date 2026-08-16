@@ -33,29 +33,50 @@ NEW_TYPES = (
     "REMOTE_SUPPORT_REQUEST", "REMOTE_SUPPORT_END",
 )
 
-OLD_TYPES = tuple(t for t in NEW_TYPES if t not in ("AGENT_RESTART", "COLLECT_DIAGNOSTICS", "APP_STOP"))
+OLD_TYPES = tuple(
+    t for t in NEW_TYPES
+    if t not in ("AGENT_RESTART", "COLLECT_DIAGNOSTICS", "APP_STOP")
+)
+
+# Ім'я з NAMING_CONVENTION: ck_%(table_name)s_%(constraint_name)s
+CHECK_NAME = "ck_commands_command_type_enum"
 
 
-def _recreate_type_check(values: tuple[str, ...]) -> None:
-    """Перевипускає CHECK на дозволені типи команд."""
-    with op.batch_alter_table(
-        "commands",
-        table_args=(
-            sa.CheckConstraint(
-                sa.column("type").in_(values), name="command_type_enum"
-            ),
+def _replace_type_check(values: tuple[str, ...]) -> None:
+    """Оновлює CHECK-обмеження переліку типів команд, якщо воно існує.
+
+    SQLite не рефлектує CHECK-обмеження, тож там гілка пропускається:
+    тестова база будується напряму з моделей і вже містить актуальний
+    перелік значень.
+    """
+    bind = op.get_bind()
+    if bind.dialect.name != "postgresql":
+        return
+
+    # SQLAlchemy від 1.4 НЕ створює CHECK для Enum(native_enum=False):
+    # `create_constraint` за замовчуванням False, і перелік перевіряється
+    # на боці Python. Тому обмеження може взагалі не існувати — і саме на
+    # цьому міграція падала на PostgreSQL, тоді як на SQLite (де гілка
+    # пропускається) усе проходило. Перестворюємо лише те, що є.
+    exists = bind.execute(
+        sa.text(
+            "SELECT 1 FROM pg_constraint "
+            "WHERE conname = :name AND conrelid = 'commands'::regclass"
         ),
-    ) as batch:
-        batch.alter_column(
-            "type",
-            existing_type=sa.String(),
-            type_=sa.Enum(*values, name="command_type_enum", native_enum=False),
-            existing_nullable=False,
-        )
+        {"name": CHECK_NAME},
+    ).scalar()
+    if not exists:
+        return
+
+    quoted = ", ".join(f"'{value}'" for value in values)
+    op.execute(f"ALTER TABLE commands DROP CONSTRAINT {CHECK_NAME}")
+    op.execute(
+        f"ALTER TABLE commands ADD CONSTRAINT {CHECK_NAME} CHECK (type IN ({quoted}))"
+    )
 
 
 def upgrade() -> None:
-    _recreate_type_check(NEW_TYPES)
+    _replace_type_check(NEW_TYPES)
 
     with op.batch_alter_table("commands") as batch:
         # Тривалість рахується на сервері: годинник пристрою може розходитись.
@@ -87,4 +108,4 @@ def downgrade() -> None:
         batch.drop_column("queue_ms")
         batch.drop_column("duration_ms")
 
-    _recreate_type_check(OLD_TYPES)
+    _replace_type_check(OLD_TYPES)
