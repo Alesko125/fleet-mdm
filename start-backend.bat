@@ -31,6 +31,13 @@ echo   Fleet MDM - бекенд
 echo ==========================================
 echo.
 
+rem Паролі задаємо до розгалуження за режимом: у docker-compose.yml вони
+rem оголошені обов'язковими ^(${VAR:?...}^), і без них падає навіть розбір
+rem файлу - зокрема у reset/stop, які теж кличуть compose.
+set "POSTGRES_PASSWORD=fleet-local-dev"
+set "POSTGRES_APP_PASSWORD=fleet-local-dev"
+set "REDIS_PASSWORD=fleet-local-dev"
+
 if /i "%MODE%"=="reset" goto do_reset
 if /i "%MODE%"=="stop" goto do_stop
 
@@ -51,14 +58,24 @@ if not exist "%PY%" (
 )
 
 rem -------------------------------------------------------------- залежності --
-rem Перевстановлюємо лише коли requirements новіші за позначку встановлення.
-set "NEED_DEPS="
-if not exist "%STAMP%" set "NEED_DEPS=1"
-if not defined NEED_DEPS (
-    for %%F in ("%BACKEND%\requirements.txt" "%BACKEND%\requirements-dev.txt") do (
-        xcopy /L /D /Y "%%~F" "%STAMP%" >nul 2>&1
-        if not errorlevel 1 set "NEED_DEPS=1"
-    )
+rem Позначка зберігає хеш обох requirements. Порівнюємо саме хеш, а не дати:
+rem git-checkout оновлює час модифікації навіть коли вміст не змінився, і
+rem перевірка за датою перевстановлювала все на кожному запуску.
+rem Хеш рахуємо у тимчасовий файл: підстановка через `for /f` вимагала б
+rem екранування лапок усередині лапок, а це найкрихкіша частина cmd.
+set "HASHTMP=%TEMP%\fleet_deps_hash.txt"
+pushd "%BACKEND%"
+"%PY%" -c "import hashlib,pathlib;h=hashlib.sha256();[h.update(pathlib.Path(p).read_bytes()) for p in ['requirements.txt','requirements-dev.txt']];print(h.hexdigest())" > "%HASHTMP%"
+popd
+set "DEPS_HASH="
+set /p DEPS_HASH=<"%HASHTMP%"
+del "%HASHTMP%" >nul 2>&1
+
+set "NEED_DEPS=1"
+if exist "%STAMP%" (
+    set "OLD_HASH="
+    set /p OLD_HASH=<"%STAMP%"
+    if /i "!OLD_HASH!"=="!DEPS_HASH!" set "NEED_DEPS="
 )
 
 if defined NEED_DEPS (
@@ -69,29 +86,19 @@ if defined NEED_DEPS (
         echo [ПОМИЛКА] Не вдалося встановити залежності.
         goto fail
     )
-    pushd "%BACKEND%"
-    "%PY%" -c "import hashlib,pathlib;h=hashlib.sha256();[h.update(pathlib.Path(p).read_bytes()) for p in ['requirements.txt','requirements-dev.txt']];print(h.hexdigest())" > "%STAMP%"
-    popd
+    > "%STAMP%" echo !DEPS_HASH!
 ) else (
     echo [2/7] Залежності актуальні.
 )
 
-rem --------------------------------------------------------- служби у Docker --
-rem Без Redis не працюють вхід ^(fail-closed rate limit^), автентифікація
-rem агентів і черга команд. Тому спершу пробуємо підняти Postgres і Redis.
-rem
-rem Паролі задаємо ДО будь-якого виклику compose: у docker-compose.yml вони
-rem оголошені як обов'язкові ^(${VAR:?...}^), і без них падає навіть розбір
-rem файлу - ще до того, як щось спробує запуститись.
-set "POSTGRES_PASSWORD=fleet-local-dev"
-set "POSTGRES_APP_PASSWORD=fleet-local-dev"
-set "REDIS_PASSWORD=fleet-local-dev"
-
+rem Чи доступний Docker: від цього залежить лише конфігурація за
+rem замовчуванням для НОВОГО .env.
 set "HAVE_DOCKER="
 docker info >nul 2>&1
 if not errorlevel 1 set "HAVE_DOCKER=1"
 
-rem DSN обчислюємо тут: вони потрібні і для очікування БД, і для .env.
+rem DSN за замовчуванням для НОВОЇ конфігурації. Якщо .env уже є, справжні
+rem значення прочитаємо з нього нижче: конфігурація головніша за здогадки.
 if defined HAVE_DOCKER (
     set "DB_URL=postgresql+asyncpg://fleet:fleet-local-dev@127.0.0.1:5432/fleet"
     set "RD_URL=redis://:fleet-local-dev@127.0.0.1:6379/0"
@@ -102,27 +109,55 @@ if defined HAVE_DOCKER (
     set "RL=false"
 )
 
-if defined HAVE_DOCKER (
-    echo [3/7] Docker знайдено - піднімаємо PostgreSQL і Redis...
-    call :start_services
-    if errorlevel 1 goto fail
-) else (
-    echo [3/7] Docker недоступний - режим SQLite.
-    echo.
-    echo        УВАГА: без Redis не працюватимуть вхід у панель,
-    echo        автентифікація агентів і черга команд. Обмеження частоти
-    echo        буде вимкнено, щоб панель хоча б відкривалася.
-    echo        Для повної функціональності запустіть Docker Desktop.
-    echo.
-)
-
 rem ------------------------------------------------------------ конфігурація --
+rem Спершу конфігурація, потім служби: який саме сервер БД піднімати -
+rem вирішує вже наявний .env, а не те, чи запущено зараз Docker.
 if not exist "%ENVFILE%" (
-    echo [4/7] Створюємо "%ENVFILE%" зі згенерованими секретами...
+    echo [3/7] Створюємо "%ENVFILE%" зі згенерованими секретами...
     call :write_env
     if errorlevel 1 goto fail
 ) else (
-    echo [4/7] Конфігурація вже існує - лишаємо без змін.
+    echo [3/7] Конфігурація вже існує - лишаємо без змін.
+    call :read_env
+)
+
+rem SQLite не потребує жодних контейнерів; PostgreSQL - потребує.
+set "NEED_DOCKER="
+if not "!DB_URL:postgres=!"=="!DB_URL!" set "NEED_DOCKER=1"
+
+rem --------------------------------------------------------- служби у Docker --
+rem Без Redis не працюють вхід ^(fail-closed rate limit^), автентифікація
+rem агентів і черга команд.
+if defined NEED_DOCKER (
+    if not defined HAVE_DOCKER (
+        echo.
+        echo [ПОМИЛКА] "%ENVFILE%" вказує на PostgreSQL, але Docker недоступний.
+        echo            База не запущена - міграції не пройдуть.
+        echo.
+        echo            Що зробити ^(одне з двох^):
+        echo.
+        echo              1^) Запустіть Docker Desktop, дочекайтеся, поки значок
+        echo                 у треї стане зеленим, і запустіть цей файл знову.
+        echo.
+        echo              2^) Перейдіть на локальний SQLite без Docker:
+        echo                     start-backend.bat reset
+        echo                 Це видалить локальну конфігурацію та дані й
+        echo                 згенерує все наново.
+        echo.
+        goto fail
+    )
+    echo [4/7] Піднімаємо PostgreSQL і Redis...
+    call :start_services
+    if errorlevel 1 goto fail
+) else (
+    echo [4/7] Режим SQLite - контейнери не потрібні.
+    echo.
+    echo        УВАГА: без Redis не працюватимуть вхід у панель,
+    echo        автентифікація агентів і черга команд. Обмеження частоти
+    echo        вимкнено, щоб панель хоча б відкривалася.
+    echo        Для повної функціональності запустіть Docker Desktop
+    echo        і виконайте start-backend.bat reset.
+    echo.
 )
 
 rem ----------------------------------------------------------------- панель --
@@ -256,6 +291,15 @@ if not "!DBRC!"=="0" (
 echo        Служби готові.
 exit /b 0
 
+:read_env
+rem Читаємо DSN із наявного .env: саме за ним працюватимуть alembic і uvicorn,
+rem тож усі подальші рішення мають спиратися на нього, а не на замовчування.
+for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%ENVFILE%") do (
+    if /i "%%A"=="DATABASE_URL" set "DB_URL=%%B"
+    if /i "%%A"=="REDIS_URL" set "RD_URL=%%B"
+)
+exit /b 0
+
 :write_env
 rem Секрети генеруються локально; у репозиторій .env не потрапляє (.gitignore).
 "%PY%" -c "import secrets,sys;print('\n'.join(secrets.token_urlsafe(48) for _ in range(4)))" > "%TEMP%\fleet_secrets.txt"
@@ -317,9 +361,25 @@ if exist "%BACKEND%\fleet-local.db" del "%BACKEND%\fleet-local.db" && echo   - �
 docker info >nul 2>&1
 if not errorlevel 1 (
     pushd "%ROOT%"
-    docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v >nul 2>&1
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
+    set "DOWNRC=!ERRORLEVEL!"
     popd
-    echo   - зупинено контейнери й видалено томи
+    if "!DOWNRC!"=="0" (
+        echo   - зупинено контейнери й видалено томи
+    ) else (
+        echo.
+        echo   [УВАГА] Не вдалося прибрати контейнери й томи ^(причина вище^).
+        echo           Дані у томах лишилися.
+        echo.
+    )
+) else (
+    echo.
+    echo   [УВАГА] Docker недоступний - томи з даними НЕ видалено.
+    echo           Якщо пізніше запустите Docker Desktop, у базі лишиться
+    echo           адміністратор зі старим паролем, а у новому .env буде
+    echo           інший - увійти не вдасться. Тоді виконайте reset ще раз
+    echo           із запущеним Docker Desktop.
+    echo.
 )
 echo Готово. Наступний запуск налаштує все наново.
 goto done
