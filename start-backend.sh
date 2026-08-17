@@ -138,14 +138,26 @@ ensure_base_packages() {
 }
 
 # ------------------------------------------------------------- Docker ----
+# Змінні, які docker-compose.yml вимагає ще на етапі розбору.
+compose_env() {
+    printf 'POSTGRES_PASSWORD=%s POSTGRES_APP_PASSWORD=%s REDIS_PASSWORD=%s'         "$POSTGRES_PASSWORD" "$POSTGRES_APP_PASSWORD" "$REDIS_PASSWORD"
+}
+
 docker_ready() {
     command -v docker >/dev/null 2>&1 || return 1
-    docker info >/dev/null 2>&1 && { DOCKER="docker"; return 0; }
+    if docker info >/dev/null 2>&1; then
+        DOCKER="docker"
+        # shellcheck disable=SC2086
+        DOCKER_ENV="env $(compose_env) docker"
+        return 0
+    fi
     # Без членства у групі docker сокет доступний лише через sudo. Групу
     # навмисно не чіпаємо: членство в ній рівносильне правам root, і таке
     # рішення має ухвалювати людина, а не скрипт запуску.
     if [ -n "$SUDO" ] && $SUDO docker info >/dev/null 2>&1; then
         DOCKER="$SUDO docker"
+        # shellcheck disable=SC2086
+        DOCKER_ENV="$SUDO env $(compose_env) docker"
         return 0
     fi
     return 1
@@ -220,8 +232,16 @@ export POSTGRES_APP_PASSWORD="fleet-local-dev"
 export REDIS_PASSWORD="fleet-local-dev"
 
 compose() {
+    # Паролі передаємо через `env` явно, а не покладаємось на export: коли
+    # доступ до сокета лише через sudo, той за замовчуванням стирає оточення
+    # (env_reset у sudoers) — і compose падав на розборі файлу, бо змінні
+    # оголошені обов'язковими. `sudo env VAR=... docker` працює скрізь,
+    # на відміну від -E/--preserve-env, які залежать від налаштувань sudoers.
+    #
+    # Без subshell і cd: --project-directory дає той самий ефект, а ERR-trap
+    # у підоболонці друкував помилку двічі.
     # shellcheck disable=SC2086
-    (cd "$ROOT" && $DOCKER compose -f docker-compose.yml -f docker-compose.dev.yml "$@")
+    $DOCKER_ENV compose         --project-directory "$ROOT"         -f "$ROOT/docker-compose.yml"         -f "$ROOT/docker-compose.dev.yml"         "$@"
 }
 
 do_reset() {
@@ -270,6 +290,7 @@ ensure_base_packages
 info "Python: $(python3 --version 2>&1)"
 
 DOCKER=""
+DOCKER_ENV=""
 HAVE_DOCKER=0
 if [ "$WANT_DOCKER" -eq 1 ]; then
     if docker_ready || install_docker; then
