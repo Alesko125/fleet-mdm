@@ -47,6 +47,8 @@
     <string name="service_channel_description">Постійне сповіщення про те, що пристроєм керує
         адміністратор. Його не можна приховати — це вимога прозорості.</string>
     <string name="service_notification_title">Пристрій під керуванням</string>
+    <string name="service_blocked">Служба зупинена: система не дала показати постійне сповіщення</string>
+    <string name="service_blocked_hint">Android не дозволив запустити службу у фоні, тож агент зупинився — працювати непомітно він не буде. Поки цей екран відкритий, службу запущено. Щоб вона трималася постійно й піднімалася після перезавантаження, пристрій має бути в режимі Device Owner.</string>
     <string name="service_idle">Звʼязок із сервером активний</string>
     <string name="service_idle_with_location">Звʼязок активний · геолокація увімкнена</string>
     <string name="service_working">Виконується операція з застосунками</string>

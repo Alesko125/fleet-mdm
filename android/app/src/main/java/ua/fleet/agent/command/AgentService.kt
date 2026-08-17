@@ -30,6 +30,15 @@ import ua.fleet.agent.ui.MainActivity
  * команди із сервера (миттєво через WebSocket, з періодичним опитуванням як
  * запасним каналом) і періодично надсилає перелік застосунків.
  */
+/** Чим завершилася спроба підняти сервіс. */
+enum class StartOutcome {
+    /** Запит прийнято системою. */
+    STARTED,
+
+    /** Система заборонила старт із фону — потрібен передній план або Device Owner. */
+    NOT_ALLOWED,
+}
+
 class AgentService : Service() {
 
     private lateinit var store: AgentStore
@@ -47,7 +56,17 @@ class AgentService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.service_idle)))
+        if (!promoteToForeground()) {
+            // Постійне сповіщення — не формальність: воно єдине, що показує
+            // власнику пристрою факт керування. Якщо система його не дала,
+            // агент НЕ переходить у тихий фоновий режим, а зупиняється й
+            // лишає слід для інтерфейсу. Непомітного керування тут не буде.
+            store.foregroundBlockedAtMillis = System.currentTimeMillis()
+            Log.w(TAG, "Немає дозволу на постійне сповіщення — сервіс зупиняється")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        store.foregroundBlockedAtMillis = 0L
 
         if (!store.isEnrolled) {
             Log.i(TAG, "Пристрій не зареєстровано — сервіс зупиняється")
@@ -60,6 +79,17 @@ class AgentService : Service() {
             connectSocket()
         }
         return START_STICKY
+    }
+
+    /** Переходить у foreground. `false` — система відмовила. */
+    private fun promoteToForeground(): Boolean = try {
+        startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.service_idle)))
+        true
+    } catch (e: IllegalStateException) {
+        false
+    } catch (e: SecurityException) {
+        Log.w(TAG, "Бракує дозволу на тип foreground-сервісу", e)
+        false
     }
 
     private suspend fun workLoop() {
@@ -193,12 +223,38 @@ class AgentService : Service() {
         private const val NOTIFICATION_ID = 4242
         private const val INVENTORY_INTERVAL_MS = 6 * 60 * 60 * 1000L
 
-        fun start(context: Context) {
+        /**
+         * Піднімає сервіс. Ніколи не кидає виняток.
+         *
+         * Від Android 12 систему не можна попросити показати постійне
+         * сповіщення з фону: `startForegroundService` кидає
+         * `ForegroundServiceStartNotAllowedException` (нащадок
+         * `IllegalStateException`), а від Android 15 служби типу `dataSync`
+         * додатково не запускаються з BOOT_COMPLETED. Раніше це валило
+         * застосунок; тепер повертаємо стан, а рішення ухвалює викликач.
+         *
+         * Винятки з обмеження — застосунок на передньому плані або режим
+         * Device Owner. Саме тому агент відновлюється, щойно власник
+         * відкриє застосунок.
+         */
+        fun start(context: Context): StartOutcome {
             val intent = Intent(context, AgentService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            return try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+                StartOutcome.STARTED
+            } catch (e: IllegalStateException) {
+                // Ловимо саме IllegalStateException, а не клас із API 31:
+                // посилання на нього в catch змусило б верифікатор класів
+                // шукати відсутній тип на старіших пристроях.
+                Log.w(TAG, "Система не дозволила запустити сервіс із фону", e)
+                StartOutcome.NOT_ALLOWED
+            } catch (e: SecurityException) {
+                Log.w(TAG, "Бракує дозволу на foreground-сервіс", e)
+                StartOutcome.NOT_ALLOWED
             }
         }
 

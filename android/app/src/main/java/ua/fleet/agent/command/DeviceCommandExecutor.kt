@@ -161,7 +161,19 @@ class DeviceCommandExecutor(
             AgentService.stop(context)
             // Невелика пауза, щоб сервіс встиг коректно згорнутися.
             kotlinx.coroutines.delay(RESTART_DELAY_MS)
-            AgentService.start(context)
+            // Перезапуск ініціює сервер, тобто застосунок у фоні. Від
+            // Android 12 система має право не дати підняти службу назад —
+            // тоді ми зупинили агента й не можемо його повернути. Про це
+            // треба сказати прямо, інакше в панелі буде «виконано», а на
+            // пристрої — тиша до наступного відкриття застосунку.
+            if (AgentService.start(context) == StartOutcome.NOT_ALLOWED) {
+                return@withContext CommandResultDto(
+                    status = "failed",
+                    error = "Android заборонив підняти службу з фону. " +
+                        "Агент відновиться, коли власник відкриє застосунок; " +
+                        "для автоматичного перезапуску потрібен режим Device Owner.",
+                )
+            }
             CommandResultDto(
                 status = "succeeded",
                 result = buildJsonObject {

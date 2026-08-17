@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ua.fleet.agent.FleetAgentApplication
 import ua.fleet.agent.command.AgentService
+import ua.fleet.agent.command.StartOutcome
 import ua.fleet.agent.command.CommandProcessor
 import ua.fleet.agent.crypto.DeviceKeyStore
 import ua.fleet.agent.device.DeviceInfoCollector
@@ -37,6 +38,8 @@ data class AgentUiState(
     val lastContactAtMillis: Long = 0L,
     val hardwareBackedKey: Boolean = false,
     val serviceEnabled: Boolean = true,
+    // Система заборонила постійне сповіщення — агент зупинено, і це видно.
+    val foregroundBlocked: Boolean = false,
     val allowRootInstall: Boolean = false,
     val installedAppCount: Int = 0,
     val location: LocationReporter.Status? = null,
@@ -193,7 +196,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         refreshSupport()
         if (store.isEnrolled && store.serviceEnabled) {
-            AgentService.start(getApplication())
+            // Тут застосунок на передньому плані — саме той момент, коли
+            // система дозволяє підняти службу. Тому будь-яку попередню
+            // відмову намагаємось відіграти назад щоразу при відкритті.
+            val outcome = AgentService.start(getApplication())
+            if (outcome == StartOutcome.NOT_ALLOWED) {
+                store.foregroundBlockedAtMillis = System.currentTimeMillis()
+            }
+            _state.update { it.copy(foregroundBlocked = store.foregroundBlockedAtMillis > 0L) }
         }
     }
 
@@ -271,12 +281,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleService(enabled: Boolean) {
         repository.state.serviceEnabled = enabled
+        var blocked = false
         if (enabled) {
-            AgentService.start(getApplication())
+            blocked = AgentService.start(getApplication()) == StartOutcome.NOT_ALLOWED
         } else {
             AgentService.stop(getApplication())
+            repository.state.foregroundBlockedAtMillis = 0L
         }
-        _state.update { it.copy(serviceEnabled = enabled) }
+        _state.update { it.copy(serviceEnabled = enabled, foregroundBlocked = blocked) }
     }
 
     fun toggleRootFallback(enabled: Boolean) {

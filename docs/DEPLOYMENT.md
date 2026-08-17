@@ -138,6 +138,66 @@ curl -fsS https://mdm.example.com/health          # {"status":"ok"}
 
 ---
 
+## 4а. Варіант: поруч із наявним зворотним проксі
+
+Якщо на машині вже щось займає 80/443 (наприклад, Caddy обслуговує інший
+проєкт), Fleet не потребує окремих портів: додається **ще один сайт** у
+конфігурацію проксі, а бекенд слухає лише loopback.
+
+1. Бекенд як служба — `infra/systemd/fleet-mdm.service`:
+
+```bash
+sudo cp infra/systemd/fleet-mdm.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now fleet-mdm
+```
+
+   `ExecStart` прив'язує uvicorn до `127.0.0.1`: назовні дивиться лише
+   проксі, тож у обхід TLS до API не дістатися.
+
+2. Сайт у Caddy — `infra/caddy/fleet-mdm.Caddyfile`, дописується в кінець
+   наявного `/etc/caddy/Caddyfile`. Наявні блоки не змінюються:
+
+```bash
+sudo cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak
+cat infra/caddy/fleet-mdm.Caddyfile | sudo tee -a /etc/caddy/Caddyfile
+sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+```
+
+   Якщо `validate` запускати через `sudo`, він створює файл логу від root, і
+   служба (працює від користувача `caddy`) потім не може в нього писати —
+   reload падає з `permission denied`. Лікується один раз:
+
+```bash
+sudo chown caddy:caddy /var/log/caddy/fleet-mdm.log
+```
+
+   Reload у Caddy атомарний: якщо новий конфіг не прийнявся, працює
+   попередній, і сусідні сайти не страждають.
+
+3. `backend/.env` під публічний домен:
+
+```ini
+APP_ENV=production
+LOG_FORMAT=json
+PUBLIC_BASE_URL=https://mdm.example.com
+CORS_ORIGINS=https://mdm.example.com
+ALLOWED_HOSTS=mdm.example.com,127.0.0.1,localhost
+TRUSTED_PROXIES=127.0.0.1
+```
+
+   `TRUSTED_PROXIES` обов'язковий: без нього обмеження частоти рахувало б
+   усіх клієнтів як `127.0.0.1`, тобто одним спільним лічильником на весь
+   інтернет. Проксі при цьому має **перезаписувати** `X-Forwarded-For`
+   (`header_up X-Forwarded-For {remote_host}`), інакше клієнт підкине
+   власний заголовок і сховається за чужою адресою.
+
+   `APP_ENV=production` вмикає Secure-cookie — саме тому цей режим і
+   потребує HTTPS. Перевірка секретів на старті відхилить слабкі значення й
+   `PUBLIC_BASE_URL` з `http://`.
+
+---
+
 ## 5. Реєстрація першого пристрою
 
 1. Панель → **Реєстрація** → «Створити токен». Задайте назву, кількість
@@ -274,6 +334,16 @@ docker compose exec api python scripts/reset_password.py admin@example.com --pas
 - Перезавантаження пристрою й тихе встановлення потребують **Device Owner**;
   без нього Android показує діалог підтвердження — це обмеження системи, і
   ми його не обходимо.
+- **Постійна робота агента без Device Owner неможлива.** Від Android 12
+  застосунок не має права піднімати foreground-службу з фону, а від
+  Android 15 — ще й із `BOOT_COMPLETED` для типу `dataSync`. Тобто після
+  перезавантаження пристрою (або після того, як систему щось змусило
+  зупинити службу) агент без Device Owner підніметься лише тоді, коли
+  власник відкриє застосунок. Обхідних шляхів ми не застосовуємо: тиха
+  робота у фоні без постійного сповіщення суперечила б самій ідеї видимого
+  керування. Агент у такому разі показує пояснення на головному екрані, а
+  команда «перезапустити агента» повертає `failed` із причиною — замість
+  того щоб рапортувати про успіх і замовкнути.
 - Запис розмов, перехоплення повідомлень чужих застосунків, кейлогінг і
   читання сповіщень задля вмісту **не реалізовані**: таких API Android
   застосунку не надає. Деталі — [COMMS.md](COMMS.md).

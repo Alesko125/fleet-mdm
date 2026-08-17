@@ -180,6 +180,12 @@ private fun StatusScreen(
 
         TransparencyCard(state.transparencyNotice)
 
+        if (state.foregroundBlocked) {
+            // Пояснюємо простими словами, а не кодом винятку: власник
+            // пристрою має розуміти, чому агент мовчить, і що зробити.
+            MessageCard(stringResource(R.string.service_blocked_hint), isError = true)
+        }
+
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(16.dp),

@@ -1,0 +1,29 @@
+[Unit]
+Description=Fleet MDM backend (uvicorn)
+Documentation=https://github.com/Alesko125/fleet-mdm
+# Сховища живуть у Docker: без них застосунок стартує, але одразу падає
+# на підключенні до БД.
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=exec
+User=alesko
+Group=alesko
+WorkingDirectory=/home/alesko/fire/backend
+# Конфігурацію застосунок читає сам із backend/.env (pydantic-settings).
+ExecStart=/home/alesko/fire/backend/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+# Мінімальне посилення: процесу не потрібні ані нові привілеї, ані доступ
+# до чужого /tmp чи домашніх каталогів інших користувачів.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/alesko/fire/backend
+
+[Install]
+WantedBy=multi-user.target

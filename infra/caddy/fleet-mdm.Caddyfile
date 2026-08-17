@@ -1,0 +1,34 @@
+
+# ------------------------------------------------------------------------
+# Панель Fleet MDM. Окремий блок: конфігурація osnova.alesko.fun вище
+# лишається недоторканою, обидва сервіси працюють на тих самих 80/443.
+#
+# Сертифікат Let's Encrypt Caddy отримує й поновлює сам — умова вже
+# виконана: *.alesko.fun вказує A-записом на цю машину.
+mdm.alesko.fun {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	# Один reverse_proxy на все: бекенд сам віддає і панель, і API, і
+	# WebSocket віддаленої підтримки (Caddy проксіює Upgrade прозоро).
+	reverse_proxy 127.0.0.1:8000 {
+		# ПЕРЕЗАПИС, а не додавання: застосунок бере ПЕРШИЙ елемент
+		# X-Forwarded-For, тож клієнт, що підкинув власний заголовок,
+		# інакше сховався б за чужою адресою й обійшов обмеження частоти.
+		# У backend/.env для цього задано TRUSTED_PROXIES=127.0.0.1.
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	log {
+		output file /var/log/caddy/fleet-mdm.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}
