@@ -794,8 +794,12 @@ class ApiClient {
     return this.get<Page<EnrollmentToken>>('/enrollment/tokens?limit=100');
   }
 
-  createEnrollmentToken(label: string) {
-    return this.post<CreatedEnrollmentToken>('/enrollment/tokens', { label: label || null });
+  createEnrollmentToken(params: { label?: string; maxUses?: number; ttlSeconds?: number }) {
+    return this.post<CreatedEnrollmentToken>('/enrollment/tokens', {
+      label: params.label || null,
+      max_uses: params.maxUses ?? 1,
+      ttl_seconds: params.ttlSeconds ?? null,
+    });
   }
 
   revokeEnrollmentToken(id: string) {

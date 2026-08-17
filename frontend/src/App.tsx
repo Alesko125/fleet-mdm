@@ -6,6 +6,7 @@ import ApkPage from './pages/ApkPage';
 import AuditPage from './pages/AuditPage';
 import DeviceDetailPage from './pages/DeviceDetailPage';
 import DevicesPage from './pages/DevicesPage';
+import EnrollmentPage from './pages/EnrollmentPage';
 import LoginPage from './pages/LoginPage';
 import MonitoringPage from './pages/MonitoringPage';
 import CommandsPage from './pages/CommandsPage';
@@ -63,6 +64,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/devices" replace />} />
           <Route path="/devices" element={<DevicesPage />} />
           <Route path="/devices/:deviceId" element={<DeviceDetailPage />} />
+          <Route path="/enrollment" element={<EnrollmentPage />} />
           <Route path="/monitoring" element={<MonitoringPage />} />
           <Route path="/apks" element={<ApkPage />} />
           <Route path="/operations" element={<OperationsPage />} />
@@ -95,6 +97,7 @@ function Sidebar({ user }: { user: User | null }) {
 
       <nav>
         <NavLink to="/devices">Пристрої</NavLink>
+        <NavLink to="/enrollment">Реєстрація</NavLink>
         <NavLink to="/monitoring">Моніторинг</NavLink>
         <NavLink to="/apks">Репозиторій APK</NavLink>
         <NavLink to="/operations">Історія операцій</NavLink>

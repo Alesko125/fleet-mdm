@@ -28,7 +28,7 @@ from app.core.security import (
 from app.db.models import AuditLog, Device, EnrollmentToken
 from app.services import file_paths
 from app.services.audit import AuditAction
-from tests.conftest import DeviceKey
+from tests.conftest import TEST_PASSWORD, DeviceKey
 
 # ------------------------------------------ ін'єкція команд через шлях ----
 
@@ -404,3 +404,45 @@ async def test_deleted_device_loses_access(client, device, admin_headers, db):
     row = await db.get(Device, uuid.UUID(device.id))
     await db.refresh(row)
     assert row.deleted_at is not None
+
+
+async def test_csrf_cookie_is_readable_from_any_panel_path(client, make_user):
+    """CSRF-cookie має бути видима скрипту на будь-якому шляху панелі.
+
+    При Path=/api/v1/auth панель на /devices не бачила власного токена, не
+    додавала заголовок — і кожне оновлення сторінки закінчувалося 403 на
+    /auth/refresh, тобто виходом із сесії.
+    """
+    await make_user()
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.com", "password": TEST_PASSWORD},
+    )
+    assert response.status_code == 200, response.text
+
+    cookies = response.headers.get_list("set-cookie")
+    csrf = next(c for c in cookies if c.startswith("fleet_csrf="))
+    refresh = next(c for c in cookies if c.startswith("fleet_refresh="))
+
+    assert "Path=/;" in csrf or csrf.rstrip().rstrip(";").endswith("Path=/")
+    assert "HttpOnly" not in csrf  # інакше скрипт її не прочитає
+
+    # Refresh-токен лишається вузько обмеженим і недоступним скрипту.
+    assert "Path=/api/v1/auth" in refresh
+    assert "HttpOnly" in refresh
+
+
+async def test_panel_can_refresh_session_after_reload(client, make_user):
+    """Повний цикл панелі: вхід, потім оновлення сесії з double-submit."""
+    await make_user()
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.com", "password": TEST_PASSWORD},
+    )
+    assert login.status_code == 200, login.text
+
+    csrf = client.cookies.get("fleet_csrf")
+    assert csrf, "CSRF-cookie не потрапила у сховище клієнта"
+
+    refreshed = await client.post("/api/v1/auth/refresh", headers={"X-CSRF-Token": csrf})
+    assert refreshed.status_code == 200, refreshed.text

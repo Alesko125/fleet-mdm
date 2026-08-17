@@ -647,3 +647,36 @@ button.link.danger,
   text-align: center;
   padding: 20px;
 }
+
+/* Картка щойно створеного токена: QR ліворуч, реквізити праворуч.
+   На вузькому екрані колонки складаються, щоб QR лишався великим. */
+.enroll-created {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.enroll-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Біле поле навколо коду: на темній темі QR інакше зливається з карткою. */
+.enroll-qr svg {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.enroll-details {
+  flex: 1 1 320px;
+  min-width: 280px;
+}
+
+.enroll-details .details {
+  grid-template-columns: 140px 1fr;
+  margin-bottom: 12px;
+}

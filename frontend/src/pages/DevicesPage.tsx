@@ -41,7 +41,8 @@ export default function DevicesPage() {
 
       {data && data.items.length === 0 ? (
         <Empty>
-          Ще немає зареєстрованих пристроїв. Створіть enrollment-токен і введіть його в агенті.
+          Ще немає зареєстрованих пристроїв.{' '}
+          <Link to="/enrollment">Створіть токен реєстрації</Link> — там же буде QR для агента.
         </Empty>
       ) : null}
 

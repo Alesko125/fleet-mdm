@@ -64,16 +64,33 @@ def _set_session_cookies(response: Response, refresh_token: str) -> str:
         settings.refresh_cookie_name, refresh_token, httponly=True, **common
     )
     # CSRF-cookie навмисно читається скриптом: панель дублює її в заголовок.
-    response.set_cookie(settings.csrf_cookie_name, csrf_token, httponly=False, **common)
+    #
+    # Шлях у неї ширший, ніж у refresh-cookie: браузер віддає `document.cookie`
+    # лише для шляхів, що збігаються з поточною сторінкою, тож при
+    # Path=/api/v1/auth панель на /devices не бачила б власного CSRF-токена —
+    # заголовок не додавався б і будь-яке оновлення сторінки завершувалося 403.
+    # На стійкість double-submit це не впливає: захист тримається на тому, що
+    # стороннє походження не може ПРОЧИТАТИ значення, а не на шляху.
+    response.set_cookie(
+        settings.csrf_cookie_name,
+        csrf_token,
+        httponly=False,
+        **{**common, "path": "/"},
+    )
     return csrf_token
 
 
 def _clear_session_cookies(response: Response) -> None:
     settings = get_settings()
-    for name in (settings.refresh_cookie_name, settings.csrf_cookie_name):
+    # Шлях має збігатися з тим, з яким cookie ставили, інакше браузер
+    # видалить не ту cookie (або жодної).
+    for name, path in (
+        (settings.refresh_cookie_name, settings.cookie_path),
+        (settings.csrf_cookie_name, "/"),
+    ):
         response.delete_cookie(
             name,
-            path=settings.cookie_path,
+            path=path,
             domain=settings.cookie_domain,
             secure=settings.use_secure_cookies,
             samesite=settings.cookie_samesite,
