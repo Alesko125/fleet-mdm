@@ -29,7 +29,7 @@ def test_normalize_accepts_valid_paths(raw, expected):
         "",
         "   ",
         "/sdcard/\x00evil",
-        "C:\Windows\System32",     # зворотні слеші
+        r"C:\Windows\System32",    # зворотні слеші
         "/sdcard/" + "x" * 300,      # задовгий елемент
         "/" + "a" * 1100,            # задовгий шлях
     ],
